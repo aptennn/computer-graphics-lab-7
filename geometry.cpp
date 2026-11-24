@@ -157,6 +157,8 @@ Polyhedron::Polyhedron(std::vector<Point> vertices, std::vector<Polygon> faces)
 }
 
 // Егор: вычисление центра по координатам всех вершин.
+// Опора вращения участника 3: берём среднее ТЕКУЩИХ координат, поэтому центр
+// учитывает предыдущие смещения. Для наших правильных тел это геометрический центр.
 Point Polyhedron::center() const noexcept {
     Point result;
     for (const Point& vertex : vertices_) {
@@ -212,6 +214,8 @@ Polyhedron makeRegularSolid(RegularSolid solid, double edgeLength) {
 }
 
 // Лилия: применение произвольной аффинной матрицы ко всем вершинам
+// Общая точка подключения: одна матрица участника 3 применяется ко всем вершинам;
+// индексы граней сохраняются, поэтому связи между вершинами не перестраиваются.
 void Polyhedron::applyMatrix(const Mat4& matrix) {
     for (Point& v : vertices_) {
         v = matrix.transformPoint(v);
@@ -232,6 +236,10 @@ void Polyhedron::rotate(double angleRad, char axis) {
 }
 
 // Лилия: вращение вокруг оси, проходящей через центр
+// Участник 3 подключает этот метод к режиму «Через центр многогранника».
+// Ось параллельна мировой X/Y/Z и проходит через C; угол задан в радианах.
+// M=T(C)*R*T(-C): сначала перенести C в O=(0,0,0), повернуть, вернуть обратно.
+// Пример: C=(3,2,0), P=(4,2,0), Z:+90° => P'=(3,3,0), а C не изменится.
 void Polyhedron::rotateAroundCenter(double angleRad, char axis) {
     const Point c = center();
     Mat4 R = Mat4::identity();
@@ -250,6 +258,9 @@ void Polyhedron::scale(double sx, double sy, double sz) {
     applyMatrix(Mat4::scale(sx, sy, sz));
 }
 
+// Участник 3. Связываем математику Mat4 с моделью: строим матрицу оси AB
+// и применяем её ко всем вершинам. При ошибке построения applyMatrix не вызывается,
+// поэтому совпадение A и B не изменяет модель. Сами A и B заданы в мировых координатах.
 void Polyhedron::rotateAroundLine(const Point& a, const Point& b, double angleRad) {
     applyMatrix(Mat4::rotationAroundLine(a, b, angleRad));
 }

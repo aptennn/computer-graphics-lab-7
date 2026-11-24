@@ -7,6 +7,8 @@ namespace geometry {
 
 enum class ProjectionType { Axonometric, Perspective };
 
+// Результат проецирования одного ребра: используются x/y, а z равна 0.
+// Это ещё не пиксели: масштаб и положение на холсте задаются при отрисовке.
 struct ProjectedEdge {
     Point first;
     Point second;

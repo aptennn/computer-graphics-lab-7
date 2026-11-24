@@ -14,15 +14,18 @@
 #include <QSaveFile>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSpinBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QWidget>
 #include <stdexcept>
 #include <sstream>
 #include <algorithm>
+#include <cmath>
 
 #include "mat4.h"
 #include "obj_io.h"
+#include "surface.h"
 #include "wireframe_canvas.h"
 
 namespace {
@@ -37,8 +40,35 @@ geometry::RegularSolid solidFromIndex(int index) {
     default: return geometry::RegularSolid::Dodecahedron;
     }
 }
+
+double bowlHeight(double x, double y) {
+    return x * x + y * y;
+}
+
+double saddleHeight(double x, double y) {
+    return x * x - y * y;
+}
+
+double rippleHeight(double x, double y) {
+    const double r = x * x + y * y + 1.0;
+    return 5.0 * (std::cos(r) / r + 0.1);
+}
+
+struct SurfacePreset {
+    const char* label;
+    geometry::HeightFunction height;
+};
+
+constexpr SurfacePreset kSurfacePresets[] = {
+    {"Чаша: x² + y²", bowlHeight},
+    {"Седло: x² − y²", saddleHeight},
+    {"Волны из лекции", rippleHeight},
+};
 } // namespace
 
+// Общее окно проекта. Для участника 3 здесь создаются поля оси/центра,
+// точек A и B, угла, проекции и расстояния камеры; connect связывает их с методами ниже.
+// Вычисления вынесены в Mat4/Polyhedron/Projection, окно только читает параметры.
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
       model_(geometry::makeRegularSolid(geometry::RegularSolid::Tetrahedron)) {
@@ -79,6 +109,59 @@ MainWindow::MainWindow(QWidget* parent)
     objLayout->addWidget(saveButton);
     objLayout->addWidget(objStatus_);
     panelLayout->addWidget(objGroup);
+
+    // Михаил (FbGod): параметры графика функции двух переменных.
+    auto* surfaceGroup = new QGroupBox("График поверхности", panel);
+    auto* surfaceForm = new QFormLayout(surfaceGroup);
+
+    auto* functionBox = new QComboBox(surfaceGroup);
+    for (const auto& preset : kSurfacePresets) {
+        functionBox->addItem(preset.label);
+    }
+    surfaceForm->addRow("Функция:", functionBox);
+
+    const auto makeBoundBox = [surfaceGroup](double initialValue) {
+        auto* box = new QDoubleSpinBox(surfaceGroup);
+        box->setDecimals(2);
+        box->setRange(-100.0, 100.0);
+        box->setSingleStep(0.25);
+        box->setValue(initialValue);
+        return box;
+    };
+
+    auto* xMin = makeBoundBox(-2.0);
+    auto* xMax = makeBoundBox(2.0);
+    auto* yMin = makeBoundBox(-2.0);
+    auto* yMax = makeBoundBox(2.0);
+
+    surfaceForm->addRow("X от:", xMin);
+    surfaceForm->addRow("X до:", xMax);
+    surfaceForm->addRow("Y от:", yMin);
+    surfaceForm->addRow("Y до:", yMax);
+
+    const auto makeSegmentsBox = [surfaceGroup] {
+        auto* box = new QSpinBox(surfaceGroup);
+        box->setRange(1, 200);
+        box->setValue(16);
+        return box;
+    };
+
+    auto* xSegments = makeSegmentsBox();
+    auto* ySegments = makeSegmentsBox();
+
+    surfaceForm->addRow("Разбиений по X:", xSegments);
+    surfaceForm->addRow("Разбиений по Y:", ySegments);
+
+    auto* buildSurfaceBtn = new QPushButton("Построить поверхность", surfaceGroup);
+    surfaceForm->addRow(buildSurfaceBtn);
+
+    auto* surfaceError = new QLabel(surfaceGroup);
+    surfaceError->setWordWrap(true);
+    surfaceError->setStyleSheet("color: #b3261e;");
+    surfaceError->hide();
+    surfaceForm->addRow(surfaceError);
+
+    panelLayout->addWidget(surfaceGroup);
 
     auto* zGroup = new QGroupBox("Егор — лабораторная №8: Z-буфер", panel);
     auto* zLayout = new QVBoxLayout(zGroup);
@@ -246,6 +329,42 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Подключения
     connect(rebuildBtn, &QPushButton::clicked, this, &MainWindow::rebuildModel);
+    connect(buildSurfaceBtn, &QPushButton::clicked, this,
+            [this, functionBox, xMin, xMax, yMin, yMax,
+             xSegments, ySegments, surfaceError] {
+        const double left = xMin->value();
+        const double right = xMax->value();
+        const double bottom = yMin->value();
+        const double top = yMax->value();
+
+        if (left >= right || bottom >= top) {
+            surfaceError->setText(
+                "По каждой оси значение «от» должно быть меньше значения «до».");
+            surfaceError->show();
+            return;
+        }
+
+        const auto height = kSurfacePresets[functionBox->currentIndex()].height;
+
+        try {
+            model_ = geometry::makeFunctionSurface(
+                height, left, right, bottom, top,
+                xSegments->value(), ySegments->value());
+
+            // У поверхности нет единой длины ребра.
+            // Для настроек холста используем опорную величину 2, как в lab6.
+            edgeLength_ = 2.0;
+            importedModel_.reset();
+            canvas_->setAutoFit(false);
+            updateOverlapDemo();
+            objStatus_->setText("Построен график поверхности.");
+            surfaceError->hide();
+            canvas_->update();
+        } catch (const std::invalid_argument&) {
+            surfaceError->setText("Не удалось построить поверхность с этими параметрами.");
+            surfaceError->show();
+        }
+    });
     connect(loadButton, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getOpenFileName(this, "Загрузить модель", {}, "Wavefront OBJ (*.obj)");
         if (!path.isEmpty()) loadObjFile(path);
@@ -264,12 +383,14 @@ MainWindow::MainWindow(QWidget* parent)
     connect(transBtn,   &QPushButton::clicked, this, &MainWindow::applyTranslate);
     connect(rotBtn,     &QPushButton::clicked, this, &MainWindow::applyRotate);
     connect(lineBtn, &QPushButton::clicked, this, &MainWindow::applyRotateAroundLine);
+    // Переключение проекции меняет только способ отображения, вершины не трогаем.
     connect(projectionBox_, &QComboBox::currentIndexChanged, this, [this](int index) {
         const bool perspective = index == 1;
         cameraDistance_->setEnabled(perspective);
         canvas_->setProjectionType(perspective ? geometry::ProjectionType::Perspective
                                                : geometry::ProjectionType::Axonometric);
     });
+    // Значение камеры передаётся в единицах длины ребра; в холсте оно станет c.
     connect(cameraDistance_, &QDoubleSpinBox::valueChanged, this, [this](double distance) {
         canvas_->setCameraDistance(distance);
     });
@@ -294,6 +415,11 @@ MainWindow::MainWindow(QWidget* parent)
     rebuildModel();
 }
 
+// Участник 3. Синхронизируем наглядную ось с параметрами вращения.
+// Режимы: 0 — скрыта, 1 — выбранная X/Y/Z, 2 — прямая AB.
+// preferredMode выбирает соответствующую ось при редактировании полей, но сохраняет
+// явное «Скрыть ось». Это только подсказка на холсте, модель здесь не вращается.
+// Центр передаётся как режим: холст вычислит актуальный C после смещения модели.
 void MainWindow::updateRotationGuide(int preferredMode) {
     if (preferredMode > 0 && rotationGuideBox_->currentIndex() != 0 &&
         rotationGuideBox_->currentIndex() != preferredMode) {
@@ -379,6 +505,10 @@ void MainWindow::applyTranslate() {
     canvas_->update();
 }
 
+// Участник 3. Обработчик кнопки поворота вокруг выбранной координатной оси.
+// Переводим градусы в радианы: rad=degrees*pi/180; выбираем X/Y/Z.
+// Через O — обычная мировая ось; через C — параллельная ей прямая через центр модели.
+// После изменения вершин update() запрашивает paintEvent, где применится проекция.
 void MainWindow::applyRotate() {
     updateRotationGuide(1);
     const double rad = rotAngle_->value() * kPi / 180.0;
@@ -389,6 +519,9 @@ void MainWindow::applyRotate() {
     canvas_->update();
 }
 
+// Участник 3. Считываем A/B в мировых координатах и угол в градусах из интерфейса.
+// Polyhedron строит матрицу AB и применяет её ко всем вершинам; окно матрицы не считает.
+// Ошибка совпадающих точек показывается под кнопкой; модель при ней не изменяется.
 void MainWindow::applyRotateAroundLine() {
     updateRotationGuide(2);
     const geometry::Point a{lineA_[0]->value(), lineA_[1]->value(), lineA_[2]->value()};

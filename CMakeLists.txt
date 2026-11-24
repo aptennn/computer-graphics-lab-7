@@ -18,6 +18,7 @@ add_executable(computer_graphics6
         main.cpp
         geometry.cpp geometry.h
         obj_io.cpp obj_io.h
+        surface.cpp surface.h
         wireframe_renderer.cpp wireframe_renderer.h
         wireframe_canvas.cpp wireframe_canvas.h
         zbuffer_renderer.cpp zbuffer_renderer.h
@@ -43,7 +44,7 @@ if(BUILD_TESTING)
             tests/window.cpp mainwindow.cpp mainwindow.h
             wireframe_canvas.cpp wireframe_renderer.cpp
             zbuffer_renderer.cpp
-            geometry.cpp obj_io.cpp mat4.cpp projection.cpp)
+            geometry.cpp obj_io.cpp surface.cpp mat4.cpp projection.cpp)
     target_include_directories(lab6_window_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(lab6_window_test PRIVATE Qt6::Widgets)
     add_test(NAME lab6_window COMMAND lab6_window_test)
