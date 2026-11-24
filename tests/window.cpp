@@ -3,6 +3,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QImage>
@@ -244,6 +245,37 @@ int main(int argc, char** argv) {
             require(!window.loadObjFile(invalid.fileName()), "Invalid OBJ was reported as loaded");
             require(modelImage(*canvas) == importedImage, "Invalid import replaced current model");
         }
+
+        auto* renderMode = child<QComboBox>(window, "renderModeBox");
+        auto* overlapDemo = child<QCheckBox>(window, "overlapDemoBox");
+        solid->setCurrentIndex(1);
+        invoke(window, "rebuildModel");
+        const auto cubeWireframe = modelImage(*canvas);
+        renderMode->setCurrentIndex(1);
+        const auto filled = modelImage(*canvas);
+        require(filled != cubeWireframe, "Z-buffer mode did not change the image");
+        overlapDemo->setChecked(true);
+        const auto scene = modelImage(*canvas);
+        const QString zScreenshotDir = qEnvironmentVariable("LAB6_SCREENSHOT_DIR");
+        if (!zScreenshotDir.isEmpty()) {
+            QDir().mkpath(zScreenshotDir);
+            render(window).save(zScreenshotDir + "/lab8-zbuffer.png");
+        }
+        require(scene != filled, "Overlapping scene did not change the image");
+        int orangePixels = 0;
+        int greenPixels = 0;
+        for (int y = 0; y < scene.height(); ++y)
+            for (int x = 0; x < scene.width(); ++x) {
+                const QRgb pixel = scene.pixel(x, y);
+                if (pixel == qRgb(220, 112, 70)) ++orangePixels;
+                if (pixel == qRgb(104, 165, 91)) ++greenPixels;
+            }
+        require(orangePixels > 100 && greenPixels > 100,
+                "All three overlapping objects must be visible in Z-buffer mode");
+        invoke(window, "applyRotate");
+        require(modelImage(*canvas) != scene, "Z-buffer mode ignored model transformation");
+        overlapDemo->setChecked(false);
+        renderMode->setCurrentIndex(0);
 
         // Optional screenshots for visual inspection; normal CTest runs do not write them.
         const QString screenshots = qEnvironmentVariable("LAB6_SCREENSHOT_DIR");

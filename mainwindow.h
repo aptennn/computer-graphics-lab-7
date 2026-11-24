@@ -7,6 +7,7 @@
 #include "geometry.h"
 
 class QComboBox;
+class QCheckBox;
 class QDoubleSpinBox;
 class QLabel;
 class WireframeCanvas;
@@ -31,6 +32,7 @@ private slots:
 
 private:
     void updateRotationGuide(int preferredMode = -1);
+    void updateOverlapDemo();
     // Модель
     geometry::Polyhedron model_;
     std::optional<geometry::Polyhedron> importedModel_;
@@ -41,6 +43,8 @@ private:
     QComboBox* solidBox_ = nullptr;
     QDoubleSpinBox* edgeBox_ = nullptr;
     QLabel* objStatus_ = nullptr;
+    QComboBox* renderModeBox_ = nullptr;
+    QCheckBox* overlapDemoBox_ = nullptr;
 
     QDoubleSpinBox* tx_ = nullptr; QDoubleSpinBox* ty_ = nullptr; QDoubleSpinBox* tz_ = nullptr;
 

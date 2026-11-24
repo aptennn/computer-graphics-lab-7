@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "wireframe_renderer.h"
+#include "zbuffer_renderer.h"
 
 WireframeCanvas::WireframeCanvas(const geometry::Polyhedron& model,
                                const double& edgeLength, QWidget* parent)
@@ -53,6 +54,11 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
 
     const auto edges = geometry::Projection::projectEdges(
         model_, projectionType_, cameraDistanceInEdges_ * edgeLength_);
+    std::vector<std::vector<geometry::ProjectedEdge>> additionalEdges;
+    additionalEdges.reserve(additionalModels_.size());
+    for (const auto& model : additionalModels_)
+        additionalEdges.push_back(geometry::Projection::projectEdges(
+            model, projectionType_, cameraDistanceInEdges_ * edgeLength_));
     double extentX = 0.0;
     double extentY = 0.0;
     for (const auto& edge : edges) {
@@ -61,6 +67,12 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
             extentY = std::max(extentY, std::abs(p.y));
         }
     }
+    for (const auto& objectEdges : additionalEdges)
+        for (const auto& edge : objectEdges)
+            for (const auto& p : {edge.first, edge.second}) {
+                extentX = std::max(extentX, std::abs(p.x));
+                extentY = std::max(extentY, std::abs(p.y));
+            }
 
     geometry::Point a = lineA_, b = lineB_;
     const bool coordinateGuide = rotationGuide_ == RotationGuide::CoordinateAxis;
@@ -100,8 +112,23 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
 
     painter.save();
     painter.setClipRect(viewport);
-    painter.setPen(QPen(Qt::black, 1.5));
-    geometry::WireframeRenderer::draw(painter, edges, viewport.center(), scale);
+    if (filledMode_) {
+        std::vector<geometry::RasterObject> objects{{&model_, qRgb(66, 133, 194)}};
+        constexpr QRgb colors[] = {qRgb(220, 112, 70), qRgb(104, 165, 91), qRgb(157, 110, 178)};
+        for (std::size_t i = 0; i < additionalModels_.size(); ++i)
+            objects.push_back({&additionalModels_[i], colors[i % 3]});
+        const QImage frame = geometry::ZBufferRenderer::render(
+            objects, projectionType_, cameraDistance, size(), viewport.center(), scale);
+        painter.drawImage(0, 0, frame);
+    } else {
+        painter.setPen(QPen(Qt::black, 1.5));
+        geometry::WireframeRenderer::draw(painter, edges, viewport.center(), scale);
+        const QColor colors[] = {QColor(220, 112, 70), QColor(104, 165, 91), QColor(157, 110, 178)};
+        for (std::size_t i = 0; i < additionalEdges.size(); ++i) {
+            painter.setPen(QPen(colors[i % 3], 1.5));
+            geometry::WireframeRenderer::draw(painter, additionalEdges[i], viewport.center(), scale);
+        }
+    }
     if (guide) {
         const QColor color = coordinateGuide ? QColor("#1565c0") : QColor("#c65d00");
         const auto toScreen = [&](const geometry::Point& p) {
@@ -155,13 +182,13 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
     painter.restore();
 
     painter.setPen(Qt::darkGray);
-    if (edges.empty()) {
+    if (edges.empty() && additionalModels_.empty()) {
         painter.drawText(viewport, Qt::AlignCenter,
                          "Модель за камерой. Увеличьте расстояние камеры.");
     }
     painter.drawText(QRectF(12, height() - 32, width() - 24, 24),
                      Qt::AlignLeft | Qt::AlignVCenter,
-                     projectionType_ == geometry::ProjectionType::Perspective
-                         ? "Каркасный режим · Перспективная"
-                         : "Каркасный режим · Аксонометрическая");
+                     QString("%1 · %2").arg(filledMode_ ? "Z-буфер" : "Каркасный режим")
+                         .arg(projectionType_ == geometry::ProjectionType::Perspective
+                                  ? "Перспективная" : "Аксонометрическая"));
 }

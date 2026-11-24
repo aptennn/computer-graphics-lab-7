@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileDialog>
@@ -78,6 +79,17 @@ MainWindow::MainWindow(QWidget* parent)
     objLayout->addWidget(saveButton);
     objLayout->addWidget(objStatus_);
     panelLayout->addWidget(objGroup);
+
+    auto* zGroup = new QGroupBox("Егор — лабораторная №8: Z-буфер", panel);
+    auto* zLayout = new QVBoxLayout(zGroup);
+    renderModeBox_ = new QComboBox(zGroup);
+    renderModeBox_->setObjectName("renderModeBox");
+    renderModeBox_->addItems({"Каркас", "Закраска с Z-буфером"});
+    overlapDemoBox_ = new QCheckBox("Показать 3 перекрывающихся объекта", zGroup);
+    overlapDemoBox_->setObjectName("overlapDemoBox");
+    zLayout->addWidget(renderModeBox_);
+    zLayout->addWidget(overlapDemoBox_);
+    panelLayout->addWidget(zGroup);
 
     // Лекция 9, слайды 39 и 54: выбор матрицы проекции.
     auto* projectionGroup = new QGroupBox("Проекция", panel);
@@ -244,6 +256,10 @@ MainWindow::MainWindow(QWidget* parent)
         if (!path.endsWith(".obj", Qt::CaseInsensitive)) path += ".obj";
         saveObjFile(path);
     });
+    connect(renderModeBox_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        canvas_->setFilledMode(index == 1);
+    });
+    connect(overlapDemoBox_, &QCheckBox::toggled, this, [this] { updateOverlapDemo(); });
     connect(edgeBox_, &QDoubleSpinBox::valueChanged, this, [this] { rebuildModel(); });
     connect(transBtn,   &QPushButton::clicked, this, &MainWindow::applyTranslate);
     connect(rotBtn,     &QPushButton::clicked, this, &MainWindow::applyRotate);
@@ -295,6 +311,7 @@ void MainWindow::rebuildModel() {
     canvas_->setAutoFit(false);
     edgeLength_ = edgeBox_->value();
     model_ = geometry::makeRegularSolid(solidFromIndex(solidBox_->currentIndex()), edgeLength_);
+    updateOverlapDemo();
     objStatus_->setText("Выбран правильный многогранник.");
     canvas_->update();
 }
@@ -326,6 +343,7 @@ bool MainWindow::loadObjFile(const QString& path) {
         importedModel_ = imported;
         model_ = std::move(imported);
         canvas_->setAutoFit(true);
+        updateOverlapDemo();
         objStatus_->setText(QString("Загружено: %1 (%2 вершин, %3 граней)")
                                 .arg(QFileInfo(file).fileName())
                                 .arg(model_.vertices().size()).arg(model_.faces().size()));
@@ -412,4 +430,25 @@ void MainWindow::resetModel() {
     } else {
         rebuildModel();
     }
+}
+
+void MainWindow::updateOverlapDemo() {
+    if (!overlapDemoBox_ || !overlapDemoBox_->isChecked()) {
+        canvas_->setAdditionalModels({});
+        return;
+    }
+    const auto center = model_.center();
+    auto cube = geometry::makeRegularSolid(geometry::RegularSolid::Hexahedron, edgeLength_ * 0.85);
+    cube.translate(center.x + edgeLength_ * 0.85,
+                   center.y + edgeLength_ * 0.15,
+                   center.z - edgeLength_ * 0.55);
+    auto octahedron = geometry::makeRegularSolid(geometry::RegularSolid::Octahedron,
+                                                  edgeLength_ * 0.95);
+    octahedron.translate(center.x - edgeLength_ * 0.65,
+                         center.y - edgeLength_ * 0.15,
+                         center.z + edgeLength_ * 0.65);
+    std::vector<geometry::Polyhedron> extras;
+    extras.push_back(std::move(cube));
+    extras.push_back(std::move(octahedron));
+    canvas_->setAdditionalModels(std::move(extras));
 }

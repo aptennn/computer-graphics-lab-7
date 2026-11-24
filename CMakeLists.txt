@@ -20,6 +20,7 @@ add_executable(computer_graphics6
         obj_io.cpp obj_io.h
         wireframe_renderer.cpp wireframe_renderer.h
         wireframe_canvas.cpp wireframe_canvas.h
+        zbuffer_renderer.cpp zbuffer_renderer.h
         mat4.cpp mat4.h
         projection.cpp projection.h
         mainwindow.cpp mainwindow.h)
@@ -41,6 +42,7 @@ if(BUILD_TESTING)
     add_executable(lab6_window_test
             tests/window.cpp mainwindow.cpp mainwindow.h
             wireframe_canvas.cpp wireframe_renderer.cpp
+            zbuffer_renderer.cpp
             geometry.cpp obj_io.cpp mat4.cpp projection.cpp)
     target_include_directories(lab6_window_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(lab6_window_test PRIVATE Qt6::Widgets)
@@ -51,4 +53,11 @@ if(BUILD_TESTING)
     target_include_directories(lab7_obj_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     set_target_properties(lab7_obj_test PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
     add_test(NAME lab7_obj COMMAND lab7_obj_test)
+
+    add_executable(lab8_zbuffer_test tests/zbuffer.cpp zbuffer_renderer.cpp
+            geometry.cpp mat4.cpp projection.cpp)
+    target_include_directories(lab8_zbuffer_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(lab8_zbuffer_test PRIVATE Qt6::Gui)
+    set_target_properties(lab8_zbuffer_test PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    add_test(NAME lab8_zbuffer COMMAND lab8_zbuffer_test)
 endif()
