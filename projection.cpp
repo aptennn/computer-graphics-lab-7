@@ -118,4 +118,38 @@ std::vector<ProjectedEdge> Projection::projectEdges(const Polyhedron& model,
     return result;
 }
 
+// Лилия: удаление нелицевых граней
+std::vector<ProjectedEdge> Projection::projectVisibleEdges(
+    const Polyhedron& model, ProjectionType type,
+    double cameraDistance, const Point& viewDirection) {
+    const Mat4 view = viewMatrix();
+    const bool perspective = type == ProjectionType::Perspective;
+    const Mat4 projection = perspective ? perspectiveMatrix(cameraDistance) : axonometricMatrix();
+
+    std::vector<Point> cameraVertices;
+    cameraVertices.reserve(model.vertices().size());
+    for (const Point& p : model.vertices()) cameraVertices.push_back(view.transformPoint(p));
+
+    std::set<std::pair<std::size_t, std::size_t>> visited;
+    std::vector<ProjectedEdge> result;
+    for (const Polygon& face : model.faces()) {
+        // Нелицевая грань: нормаль смотрит от наблюдателя.
+        const Point normal = faceNormal(model, face);
+        if (normal.x * viewDirection.x + normal.y * viewDirection.y +
+            normal.z * viewDirection.z <= 0.0) {
+            continue;   // грань отвёрнута — пропускаем
+        }
+        const auto& indices = face.vertexIndices;
+        for (std::size_t i = 0; i < indices.size(); ++i) {
+            const auto edge = std::minmax(indices[i], indices[(i + 1) % indices.size()]);
+            if (!visited.insert(edge).second) continue;
+            if (const auto projected = projectCameraSegment(cameraVertices[edge.first],
+                    cameraVertices[edge.second], type, cameraDistance, projection)) {
+                result.push_back(*projected);
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace geometry

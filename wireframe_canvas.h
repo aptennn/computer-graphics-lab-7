@@ -22,6 +22,13 @@ public:
     }
     void setRotationGuide(RotationGuide guide, int coordinateAxis, bool throughCenter,
                           const geometry::Point& a, const geometry::Point& b);
+    void setCullBackfaces(bool enabled) { cullBackfaces_ = enabled; update(); }
+    // Лилия
+    void setViewDirection(const geometry::Point& direction) {
+        const double len = std::hypot(direction.x, direction.y, direction.z);
+        if (len > 1e-12) viewDirection_ = {direction.x / len, direction.y / len, direction.z / len};
+        update();
+    }
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -39,4 +46,6 @@ private:
     bool throughCenter_ = false;
     geometry::Point lineA_;
     geometry::Point lineB_{1, 1, 1};
+    bool cullBackfaces_ = false;
+    geometry::Point viewDirection_{0, 0, 1};   // направление обзора (мировое)
 };

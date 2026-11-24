@@ -68,13 +68,19 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
         return;
     }
 
-    const auto edges = geometry::Projection::projectEdges(
-        model_, projectionType_, cameraDistanceInEdges_ * edgeLength_);
+    const auto edges = cullBackfaces_
+        ? geometry::Projection::projectVisibleEdges(
+              model_, projectionType_, cameraDistanceInEdges_ * edgeLength_, viewDirection_)
+        : geometry::Projection::projectEdges(
+              model_, projectionType_, cameraDistanceInEdges_ * edgeLength_);
     std::vector<std::vector<geometry::ProjectedEdge>> additionalEdges;
     additionalEdges.reserve(additionalModels_.size());
     for (const auto& model : additionalModels_)
-        additionalEdges.push_back(geometry::Projection::projectEdges(
-            model, projectionType_, cameraDistanceInEdges_ * edgeLength_));
+        additionalEdges.push_back(cullBackfaces_
+            ? geometry::Projection::projectVisibleEdges(
+                  model, projectionType_, cameraDistanceInEdges_ * edgeLength_, viewDirection_)
+            : geometry::Projection::projectEdges(
+                  model, projectionType_, cameraDistanceInEdges_ * edgeLength_));
     double extentX = 0.0;
     double extentY = 0.0;
     for (const auto& edge : edges) {

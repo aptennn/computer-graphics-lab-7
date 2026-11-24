@@ -30,6 +30,11 @@ public:
     static std::vector<ProjectedEdge> projectEdges(const Polyhedron& model,
                                                   ProjectionType type,
                                                   double cameraDistance);
+    // Лилия: Отсечение нелицевых граней: возвращает только рёбра видимых граней.
+    // viewDirection — вектор обзора (направление от объекта к наблюдателю), единичный.
+    static std::vector<ProjectedEdge> projectVisibleEdges(
+        const Polyhedron& model, ProjectionType type,
+        double cameraDistance, const Point& viewDirection);                                              
 };
 
 } // namespace geometry

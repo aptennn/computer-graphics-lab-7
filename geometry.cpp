@@ -132,6 +132,90 @@ Polyhedron makeDodecahedron(double edgeLength) {
 
 } // namespace
 
+// Лилия: Фигура вращения: кольца из образующей, повёрнутые вокруг оси.
+Polyhedron makeSolidOfRevolution(const std::vector<Point>& generatrix,
+                                 char axis, int segments) {
+    if (generatrix.size() < 2)
+        throw std::invalid_argument("Generatrix needs at least two points");
+    if (segments < 3)
+        throw std::invalid_argument("Segments must be at least 3");
+    if (axis != 'x' && axis != 'y' && axis != 'z')
+        throw std::invalid_argument("Axis must be x, y or z");
+
+    constexpr double pi = 3.14159265358979323846;
+    const int rings = segments;
+    const std::size_t n = generatrix.size();
+
+    // Возвращает точку, повёрнутую на angle вокруг выбранной оси.
+    auto rotatePoint = [&](const Point& p, double angle) -> Point {
+        double u, v, w;
+        if (axis == 'z')      { u = p.x; v = p.y; w = p.z; }
+        else if (axis == 'x') { u = p.y; v = p.z; w = p.x; }
+        else                  { u = p.z; v = p.x; w = p.y; }
+        const double c = std::cos(angle), s = std::sin(angle);
+        const double ru = u * c - v * s;
+        const double rv = u * s + v * c;
+        if (axis == 'z')      return Point{ru, rv, w};
+        else if (axis == 'x') return Point{w, ru, rv};
+        else                  return Point{rv, w, ru};
+    };
+
+    std::vector<Point> vertices;
+    vertices.reserve(n * static_cast<std::size_t>(rings));
+    for (int k = 0; k < rings; ++k) {
+        const double angle = 2.0 * pi * k / rings;
+        for (const Point& p : generatrix)
+            vertices.push_back(rotatePoint(p, angle));
+    }
+
+    // Грани: только треугольники — безопасно при точках на оси.
+    std::vector<Polygon> faces;
+    faces.reserve(static_cast<std::size_t>(rings) * (n - 1) * 2);
+    for (int k = 0; k < rings; ++k) {
+        const int next = (k + 1) % rings;
+        for (std::size_t i = 0; i + 1 < n; ++i) {
+            const std::size_t a = static_cast<std::size_t>(k) * n + i;
+            const std::size_t b = static_cast<std::size_t>(k) * n + (i + 1);
+            const std::size_t c = static_cast<std::size_t>(next) * n + (i + 1);
+            const std::size_t d = static_cast<std::size_t>(next) * n + i;
+            faces.push_back({{a, b, c}});
+            faces.push_back({{a, c, d}});
+        }
+    }
+    return {std::move(vertices), std::move(faces)};
+}
+
+// Лилия: отсечение граней
+Point faceNormal(const Polyhedron& polyhedron, const Polygon& face) {
+    const auto& indices = face.vertexIndices;
+    const auto& verts = polyhedron.vertices();
+    if (indices.size() < 3)
+        throw std::invalid_argument("A face needs at least three vertices");
+
+    // Нормаль по первым трём вершинам (векторное произведение).
+    const Point a = verts[indices[0]];
+    const Point b = verts[indices[1]];
+    const Point c = verts[indices[2]];
+    const Point ab{b.x - a.x, b.y - a.y, b.z - a.z};
+    const Point ac{c.x - a.x, c.y - a.y, c.z - a.z};
+    Point n{ab.y * ac.z - ab.z * ac.y,
+            ab.z * ac.x - ab.x * ac.z,
+            ab.x * ac.y - ab.y * ac.x};
+
+    // Ориентация наружу: если нормаль смотрит внутрь — инвертируем.
+    const Point center = polyhedron.center();
+    const Point toFace{a.x - center.x, a.y - center.y, a.z - center.z};
+    if (n.x * toFace.x + n.y * toFace.y + n.z * toFace.z < 0.0) {
+        n.x = -n.x; n.y = -n.y; n.z = -n.z;
+    }
+
+    // Нормировка.
+    const double len = std::sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
+    if (len < 1e-12)
+        throw std::invalid_argument("Degenerate face has no normal");
+    return {n.x / len, n.y / len, n.z / len};
+}
+
 // Егор: проверка данных модели при создании многогранника.
 Polyhedron::Polyhedron(std::vector<Point> vertices, std::vector<Polygon> faces)
     : vertices_(std::move(vertices)), faces_(std::move(faces)) {

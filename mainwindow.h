@@ -10,6 +10,8 @@ class QComboBox;
 class QCheckBox;
 class QDoubleSpinBox;
 class QLabel;
+class QPushButton;
+class QLineEdit;
 class WireframeCanvas;
 
 // главное окно — управление моделью и её аффинными преобразованиями.
@@ -29,6 +31,8 @@ private slots:
     void applyScaleAroundCenter();
     void applyReflect();
     void resetModel();
+    void buildRevolution();
+    void applyViewDirection();
 
 private:
     void updateRotationGuide(int preferredMode = -1);
@@ -64,4 +68,17 @@ private:
     QDoubleSpinBox* sx_ = nullptr; QDoubleSpinBox* sy_ = nullptr; QDoubleSpinBox* sz_ = nullptr;
 
     QComboBox* reflectPlane_ = nullptr;
+
+    // Фигура вращения
+    QLineEdit* revolutionPoints_ = nullptr;
+    QComboBox* revolutionAxis_ = nullptr;
+    QDoubleSpinBox* revolutionSegments_ = nullptr;
+    QLabel* revolutionStatus_ = nullptr;
+
+        // Отсечение нелицевых граней
+    QCheckBox* cullCheckBox_ = nullptr;
+    QDoubleSpinBox* viewDirX_ = nullptr;
+    QDoubleSpinBox* viewDirY_ = nullptr;
+    QDoubleSpinBox* viewDirZ_ = nullptr;
+    QPushButton* applyViewDirBtn_ = nullptr;
 };
