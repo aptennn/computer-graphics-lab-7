@@ -2,6 +2,7 @@
 
 #include <QMainWindow>
 #include <array>
+#include <optional>
 
 #include "geometry.h"
 
@@ -15,6 +16,8 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+    bool loadObjFile(const QString& path);
+    bool saveObjFile(const QString& path);
 
 private slots:
     void rebuildModel();     
@@ -30,12 +33,14 @@ private:
     void updateRotationGuide(int preferredMode = -1);
     // Модель
     geometry::Polyhedron model_;
+    std::optional<geometry::Polyhedron> importedModel_;
     double edgeLength_ = 2.0;
 
     // Виджеты
     WireframeCanvas* canvas_ = nullptr;
     QComboBox* solidBox_ = nullptr;
     QDoubleSpinBox* edgeBox_ = nullptr;
+    QLabel* objStatus_ = nullptr;
 
     QDoubleSpinBox* tx_ = nullptr; QDoubleSpinBox* ty_ = nullptr; QDoubleSpinBox* tz_ = nullptr;
 

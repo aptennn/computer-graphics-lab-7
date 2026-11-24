@@ -13,6 +13,7 @@ public:
                              const double& edgeLength, QWidget* parent = nullptr);
     void setProjectionType(geometry::ProjectionType type);
     void setCameraDistance(double distanceInEdges);
+    void setAutoFit(bool enabled) { autoFit_ = enabled; update(); }
     void setRotationGuide(RotationGuide guide, int coordinateAxis, bool throughCenter,
                           const geometry::Point& a, const geometry::Point& b);
 
@@ -24,6 +25,7 @@ private:
     const double& edgeLength_;
     geometry::ProjectionType projectionType_ = geometry::ProjectionType::Axonometric;
     double cameraDistanceInEdges_ = 6.0;
+    bool autoFit_ = false;
     RotationGuide rotationGuide_ = RotationGuide::Hidden;
     int coordinateAxis_ = 0;
     bool throughCenter_ = false;

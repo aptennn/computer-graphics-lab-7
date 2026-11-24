@@ -10,6 +10,8 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QTemporaryDir>
+#include <QFile>
 
 #include <iostream>
 #include <stdexcept>
@@ -206,6 +208,42 @@ int main(int argc, char** argv) {
         for (const char* name : {"lineBX", "lineBY", "lineBZ"})
             child<QDoubleSpinBox>(window, name)->setValue(1);
         require(guidePixels(guideMask(*canvas, true)) > 10, "View-aligned axis marker is missing");
+
+        QTemporaryDir temporary;
+        require(temporary.isValid(), "Could not create temporary directory");
+        const QString sourcePath = temporary.filePath("source.obj");
+        const QString savedPath = temporary.filePath("saved.obj");
+        {
+            QFile source(sourcePath);
+            require(source.open(QIODevice::WriteOnly), "Could not create OBJ fixture");
+            require(source.write("v 0 0 0\nv 3 0 0\nv 0 2 0\nf 1 2 3\n") > 0,
+                    "Could not write OBJ fixture");
+        }
+        guide->setCurrentIndex(0);
+        invoke(window, "rebuildModel");
+        const auto regularImage = modelImage(*canvas);
+        require(window.loadObjFile(sourcePath), "UI failed to import OBJ");
+        const auto importedImage = modelImage(*canvas);
+        require(importedImage != regularImage, "Imported OBJ did not appear on canvas");
+        invoke(window, "applyTranslate");
+        require(modelImage(*canvas) != importedImage, "Imported OBJ did not transform");
+        require(window.saveObjFile(savedPath), "UI failed to export OBJ");
+        QFile saved(savedPath);
+        require(saved.open(QIODevice::ReadOnly) && saved.readAll().contains("v 2"),
+                "UI did not save transformed coordinates");
+        invoke(window, "resetModel");
+        require(modelImage(*canvas) == importedImage, "Reset did not restore imported OBJ");
+        require(!window.loadObjFile(temporary.filePath("missing.obj")),
+                "Missing OBJ was reported as loaded");
+        require(modelImage(*canvas) == importedImage, "Failed import replaced current model");
+        {
+            QFile invalid(temporary.filePath("invalid.obj"));
+            require(invalid.open(QIODevice::WriteOnly), "Could not create invalid OBJ fixture");
+            invalid.write("v 0 0 0\nf 1 2 3\n");
+            invalid.close();
+            require(!window.loadObjFile(invalid.fileName()), "Invalid OBJ was reported as loaded");
+            require(modelImage(*canvas) == importedImage, "Invalid import replaced current model");
+        }
 
         // Optional screenshots for visual inspection; normal CTest runs do not write them.
         const QString screenshots = qEnvironmentVariable("LAB6_SCREENSHOT_DIR");

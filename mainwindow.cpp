@@ -2,19 +2,26 @@
 
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QGridLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QSaveFile>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QWidget>
 #include <stdexcept>
+#include <sstream>
+#include <algorithm>
 
 #include "mat4.h"
+#include "obj_io.h"
 #include "wireframe_canvas.h"
 
 namespace {
@@ -57,6 +64,20 @@ MainWindow::MainWindow(QWidget* parent)
     auto* rebuildBtn = new QPushButton("Построить", solidGroup);
     solidForm->addRow(rebuildBtn);
     panelLayout->addWidget(solidGroup);
+
+    auto* objGroup = new QGroupBox("Егор — лабораторная №7: загрузка OBJ", panel);
+    auto* objLayout = new QVBoxLayout(objGroup);
+    auto* loadButton = new QPushButton("Загрузить OBJ…", objGroup);
+    loadButton->setObjectName("loadObjButton");
+    auto* saveButton = new QPushButton("Сохранить OBJ…", objGroup);
+    saveButton->setObjectName("saveObjButton");
+    objStatus_ = new QLabel("Сохранение включает текущие преобразования модели.", objGroup);
+    objStatus_->setObjectName("objStatus");
+    objStatus_->setWordWrap(true);
+    objLayout->addWidget(loadButton);
+    objLayout->addWidget(saveButton);
+    objLayout->addWidget(objStatus_);
+    panelLayout->addWidget(objGroup);
 
     // Лекция 9, слайды 39 и 54: выбор матрицы проекции.
     auto* projectionGroup = new QGroupBox("Проекция", panel);
@@ -213,6 +234,16 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Подключения
     connect(rebuildBtn, &QPushButton::clicked, this, &MainWindow::rebuildModel);
+    connect(loadButton, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getOpenFileName(this, "Загрузить модель", {}, "Wavefront OBJ (*.obj)");
+        if (!path.isEmpty()) loadObjFile(path);
+    });
+    connect(saveButton, &QPushButton::clicked, this, [this] {
+        QString path = QFileDialog::getSaveFileName(this, "Сохранить модель", {}, "Wavefront OBJ (*.obj)");
+        if (path.isEmpty()) return;
+        if (!path.endsWith(".obj", Qt::CaseInsensitive)) path += ".obj";
+        saveObjFile(path);
+    });
     connect(edgeBox_, &QDoubleSpinBox::valueChanged, this, [this] { rebuildModel(); });
     connect(transBtn,   &QPushButton::clicked, this, &MainWindow::applyTranslate);
     connect(rotBtn,     &QPushButton::clicked, this, &MainWindow::applyRotate);
@@ -260,9 +291,69 @@ void MainWindow::updateRotationGuide(int preferredMode) {
 }
 
 void MainWindow::rebuildModel() {
+    importedModel_.reset();
+    canvas_->setAutoFit(false);
     edgeLength_ = edgeBox_->value();
     model_ = geometry::makeRegularSolid(solidFromIndex(solidBox_->currentIndex()), edgeLength_);
+    objStatus_->setText("Выбран правильный многогранник.");
     canvas_->update();
+}
+
+bool MainWindow::loadObjFile(const QString& path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        objStatus_->setText("Ошибка загрузки: " + file.errorString());
+        return false;
+    }
+    const QByteArray bytes = file.readAll();
+    if (file.error() != QFile::NoError) {
+        objStatus_->setText("Ошибка загрузки: " + file.errorString());
+        return false;
+    }
+    try {
+        std::istringstream input(std::string(bytes.constData(), bytes.size()));
+        auto imported = geometry::readObj(input);
+        const auto& vertices = imported.vertices();
+        double minX = vertices.front().x, maxX = minX;
+        double minY = vertices.front().y, maxY = minY;
+        double minZ = vertices.front().z, maxZ = minZ;
+        for (const auto& point : vertices) {
+            minX = std::min(minX, point.x); maxX = std::max(maxX, point.x);
+            minY = std::min(minY, point.y); maxY = std::max(maxY, point.y);
+            minZ = std::min(minZ, point.z); maxZ = std::max(maxZ, point.z);
+        }
+        edgeLength_ = std::max({maxX - minX, maxY - minY, maxZ - minZ, 0.01});
+        importedModel_ = imported;
+        model_ = std::move(imported);
+        canvas_->setAutoFit(true);
+        objStatus_->setText(QString("Загружено: %1 (%2 вершин, %3 граней)")
+                                .arg(QFileInfo(file).fileName())
+                                .arg(model_.vertices().size()).arg(model_.faces().size()));
+        canvas_->update();
+        return true;
+    } catch (const std::exception& error) {
+        objStatus_->setText("Ошибка OBJ: " + QString::fromUtf8(error.what()));
+        return false;
+    }
+}
+
+bool MainWindow::saveObjFile(const QString& path) {
+    try {
+        std::ostringstream output;
+        geometry::writeObj(output, model_);
+        const std::string content = output.str();
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly) || file.write(content.data(), content.size()) != content.size() ||
+            !file.commit()) {
+            objStatus_->setText("Ошибка сохранения: " + file.errorString());
+            return false;
+        }
+        objStatus_->setText("Сохранено: " + QFileInfo(path).fileName());
+        return true;
+    } catch (const std::exception& error) {
+        objStatus_->setText("Ошибка сохранения: " + QString::fromUtf8(error.what()));
+        return false;
+    }
 }
 
 void MainWindow::applyTranslate() {
@@ -313,4 +404,12 @@ void MainWindow::applyReflect() {
     canvas_->update();
 }
 
-void MainWindow::resetModel() { rebuildModel(); }
+void MainWindow::resetModel() {
+    if (importedModel_) {
+        model_ = *importedModel_;
+        objStatus_->setText("Загруженная модель восстановлена.");
+        canvas_->update();
+    } else {
+        rebuildModel();
+    }
+}
