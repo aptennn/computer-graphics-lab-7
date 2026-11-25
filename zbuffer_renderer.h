@@ -23,8 +23,8 @@ public:
                          double cameraDistance, QSize size, QPointF origin, double scale);
 
     static QImage render(const std::vector<RasterObject>& objects,
-                     const ProjectionView& frame,
-                     QSize size, QPointF origin, double scale);
+                         const ProjectionView& frame,
+                         QSize size, QPointF origin, double scale, bool cullBackfaces = false);
 };
 
 } // namespace geometry

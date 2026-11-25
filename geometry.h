@@ -14,7 +14,7 @@ struct Point {
 };
 
 // Егор: грань хранит индексы общих вершин, а не их копии.
-// прочит час
+// При взгляде с лицевой стороны вершины перечислены против часовой стрелки.
 struct Polygon {
     std::vector<std::size_t> vertexIndices;
 };
@@ -47,6 +47,9 @@ private:
     std::vector<Polygon> faces_;
 };
 
+// Лилия: единичная нормаль по обходу грани, нулевая для вырожденной грани.
+Point faceNormal(const Polyhedron& polyhedron, const Polygon& face);
+
 // Егор: обязательные и бонусные правильные многогранники из лабораторной №6.
 enum class RegularSolid {
     Tetrahedron,
@@ -59,5 +62,10 @@ enum class RegularSolid {
 // Егор: создание выбранного многогранника с заданной длиной ребра.
 // Длина ребра должна быть конечной и положительной.
 Polyhedron makeRegularSolid(RegularSolid solid, double edgeLength = 2.0);
+
+// Лилия: Фигура вращения: образующая (набор точек), ось 'x'|'y'|'z', число разбиений.
+Polyhedron makeSolidOfRevolution(const std::vector<Point>& generatrix,
+                                  char axis,
+                                  int segments);
 
 } // namespace geometry

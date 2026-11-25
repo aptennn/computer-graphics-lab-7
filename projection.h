@@ -27,17 +27,24 @@ class Projection {
 public:
     // Повороты вокруг Y и X для прямоугольной изометрии (слайд 39).
     static Mat4 viewMatrix();
+    // Ось +Z вида направлена от сцены к наблюдателю.
+    static Mat4 viewFromDirection(const Point& direction);
     static Mat4 axonometricMatrix();
     // Центр проекции (0,0,c), плоскость z=0; w=1-z/c (слайд 54).
     static Mat4 perspectiveMatrix(double cameraDistance);
-    
+
     static ProjectionView fixedView(ProjectionType type, double cameraDistance);
 
     static std::optional<ProjectedEdge> projectSegment(
         const Point& a, const Point& b, const ProjectionView& frame);
 
     static std::vector<ProjectedEdge> projectEdges(
-        const Polyhedron& model, const ProjectionView& frame);
+        const Polyhedron& model, const ProjectionView& frame,
+        bool cullBackfaces = false);
+
+    // Лилия: одна проверка лицевой стороны для каркаса и заливки.
+    static bool isFrontFacing(const Point& normalInView, const Point& pointInView,
+                              const ProjectionView& frame);
 
     // Отрезок и вспомогательная ось проходят те же преобразования, что и модель.
     static std::optional<ProjectedEdge> projectSegment(const Point& a, const Point& b,

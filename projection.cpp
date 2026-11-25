@@ -45,6 +45,31 @@ Mat4 Projection::viewMatrix() {
          * Mat4::rotationY(-pi / 4.0);
 }
 
+Mat4 Projection::viewFromDirection(const Point& direction) {
+    const double length = std::hypot(direction.x, direction.y, direction.z);
+    if (!std::isfinite(length) || length <= 1e-12) {
+        throw std::invalid_argument("View direction must be finite and nonzero");
+    }
+    const Point back{direction.x / length, direction.y / length, direction.z / length};
+    const Point upHint = std::abs(back.z) < 0.99 ? Point{0, 0, 1} : Point{0, 1, 0};
+    Point right{upHint.y * back.z - upHint.z * back.y,
+                upHint.z * back.x - upHint.x * back.z,
+                upHint.x * back.y - upHint.y * back.x};
+    const double rightLength = std::hypot(right.x, right.y, right.z);
+    right = {right.x / rightLength, right.y / rightLength, right.z / rightLength};
+    const Point up{back.y * right.z - back.z * right.y,
+                   back.z * right.x - back.x * right.z,
+                   back.x * right.y - back.y * right.x};
+    Mat4 view = Mat4::identity();
+    const Point axes[] = {right, up, back};
+    for (int row = 0; row < 3; ++row) {
+        view.m[row][0] = axes[row].x;
+        view.m[row][1] = axes[row].y;
+        view.m[row][2] = axes[row].z;
+    }
+    return view;
+}
+
 // Участник 3. Ортографическая часть аксонометрии (лекция 9, слайд 39).
 // После выбора ракурса проецируем на z=0: (x,y,z,1) -> (x,y,0,1).
 // Глубина не меняет размер, параллельность рёбер сохраняется.
@@ -99,8 +124,18 @@ std::vector<ProjectedEdge> Projection::projectEdges(
     return projectEdges(model, fixedView(type, cameraDistance));
 }
 
+bool Projection::isFrontFacing(const Point& normalInView, const Point& pointInView,
+                               const ProjectionView& frame) {
+    if (frame.type == ProjectionType::Axonometric) {
+        return normalInView.z > 0.0;
+    }
+    // В перспективе направление к камере (0, 0, c) у каждой грани своё.
+    return -normalInView.x * pointInView.x - normalInView.y * pointInView.y
+           + normalInView.z * (frame.cameraDistance - pointInView.z) > 0.0;
+}
+
 std::vector<ProjectedEdge> Projection::projectEdges(
-        const Polyhedron& model, const ProjectionView& frame) {
+        const Polyhedron& model, const ProjectionView& frame, bool cullBackfaces) {
     const Mat4& view = frame.view;
     const Mat4& projection = frame.projection;
     const ProjectionType type = frame.type;
@@ -116,6 +151,10 @@ std::vector<ProjectedEdge> Projection::projectEdges(
     std::vector<ProjectedEdge> result;
     for (const Polygon& face : model.faces()) {
         const auto& indices = face.vertexIndices;
+        if (cullBackfaces && !isFrontFacing(view.transformVector(faceNormal(model, face)),
+                                           cameraVertices[indices.front()], frame)) {
+            continue;
+        }
         for (std::size_t i = 0; i < indices.size(); ++i) {
             // Остаток % замыкает последнюю вершину на первую.
             // minmax приводит (i,j) и (j,i) к одной паре: например, (2,5).

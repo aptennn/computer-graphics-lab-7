@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
@@ -132,6 +133,111 @@ Polyhedron makeDodecahedron(double edgeLength) {
 
 } // namespace
 
+// Лилия: Фигура вращения: кольца из образующей, повёрнутые вокруг оси.
+Polyhedron makeSolidOfRevolution(const std::vector<Point>& generatrix,
+                                 char axis, int segments) {
+    if (generatrix.size() < 2)
+        throw std::invalid_argument("Generatrix needs at least two points");
+    if (segments < 3)
+        throw std::invalid_argument("Segments must be at least 3");
+    if (axis != 'x' && axis != 'y' && axis != 'z')
+        throw std::invalid_argument("Axis must be x, y or z");
+
+    constexpr double pi = 3.14159265358979323846;
+    const int rings = segments;
+    const std::size_t n = generatrix.size();
+
+    // Возвращает точку, повёрнутую на angle вокруг выбранной оси.
+    auto rotatePoint = [&](const Point& p, double angle) -> Point {
+        double u, v, w;
+        if (axis == 'z')      { u = p.x; v = p.y; w = p.z; }
+        else if (axis == 'x') { u = p.y; v = p.z; w = p.x; }
+        else                  { u = p.z; v = p.x; w = p.y; }
+        const double c = std::cos(angle), s = std::sin(angle);
+        const double ru = u * c - v * s;
+        const double rv = u * s + v * c;
+        if (axis == 'z')      return Point{ru, rv, w};
+        else if (axis == 'x') return Point{w, ru, rv};
+        else                  return Point{rv, w, ru};
+    };
+
+    std::vector<Point> vertices;
+    vertices.reserve(n * static_cast<std::size_t>(rings));
+    for (int k = 0; k < rings; ++k) {
+        const double angle = 2.0 * pi * k / rings;
+        for (const Point& p : generatrix)
+            vertices.push_back(rotatePoint(p, angle));
+    }
+
+    const auto axial = [axis](const Point& p) {
+        return axis == 'x' ? p.x : axis == 'y' ? p.y : p.z;
+    };
+    const auto radial = [axis](const Point& p) {
+        if (axis == 'x') return std::hypot(p.y, p.z);
+        if (axis == 'y') return std::hypot(p.z, p.x);
+        return std::hypot(p.x, p.y);
+    };
+    // Знак вклада полос в объём задаёт общий обход даже для обратной образующей.
+    double volumeSign = 0.0;
+    for (std::size_t i = 1; i < n; ++i) {
+        const Point& a = generatrix[i - 1];
+        const Point& b = generatrix[i];
+        const double ra = radial(a), rb = radial(b);
+        volumeSign += (axial(b) - axial(a)) * (ra * ra + ra * rb + rb * rb);
+    }
+    const bool reverseWinding = volumeSign > 0.0;
+
+    // На оси одна из двух половин полосы может схлопнуться в линию.
+    std::vector<Polygon> faces;
+    faces.reserve(static_cast<std::size_t>(rings) * (n - 1) * 2);
+    const auto addTriangle = [&](std::size_t a, std::size_t b, std::size_t c) {
+        const auto ab = subtract(vertices[b], vertices[a]);
+        const auto ac = subtract(vertices[c], vertices[a]);
+        const Point normal = cross(ab, ac);
+        const double edgeProduct = std::hypot(ab.x, ab.y, ab.z) *
+                                   std::hypot(ac.x, ac.y, ac.z);
+        constexpr double tolerance = 8.0 * std::numeric_limits<double>::epsilon();
+        if (std::hypot(normal.x, normal.y, normal.z) <= tolerance * edgeProduct) return;
+        if (reverseWinding) std::swap(b, c);
+        faces.push_back({{a, b, c}});
+    };
+    for (int k = 0; k < rings; ++k) {
+        const int next = (k + 1) % rings;
+        for (std::size_t i = 0; i + 1 < n; ++i) {
+            const std::size_t a = static_cast<std::size_t>(k) * n + i;
+            const std::size_t b = static_cast<std::size_t>(k) * n + (i + 1);
+            const std::size_t c = static_cast<std::size_t>(next) * n + (i + 1);
+            const std::size_t d = static_cast<std::size_t>(next) * n + i;
+            addTriangle(a, b, c);
+            addTriangle(a, c, d);
+        }
+    }
+    if (faces.empty()) throw std::invalid_argument("Generatrix produces no surface");
+    return {std::move(vertices), std::move(faces)};
+}
+
+// Лилия: отсечение граней
+Point faceNormal(const Polyhedron& polyhedron, const Polygon& face) {
+    const auto& indices = face.vertexIndices;
+    const auto& verts = polyhedron.vertices();
+    if (indices.size() < 3) return {};
+
+    // Сумма векторных произведений сохраняет обход грани, даже если первые
+    // три вершины коллинеарны. Для открытой поверхности ориентацию задаёт обход.
+    const Point origin = verts[indices.front()];
+    Point n;
+    for (std::size_t i = 1; i + 1 < indices.size(); ++i) {
+        const Point contribution = cross(subtract(verts[indices[i]], origin),
+                                         subtract(verts[indices[i + 1]], origin));
+        n.x += contribution.x;
+        n.y += contribution.y;
+        n.z += contribution.z;
+    }
+    const double len = std::hypot(n.x, n.y, n.z);
+    if (!std::isfinite(len) || len == 0.0) return {};
+    return {n.x / len, n.y / len, n.z / len};
+}
+
 // Егор: проверка данных модели при создании многогранника.
 Polyhedron::Polyhedron(std::vector<Point> vertices, std::vector<Polygon> faces)
     : vertices_(std::move(vertices)), faces_(std::move(faces)) {
@@ -215,10 +321,15 @@ Polyhedron makeRegularSolid(RegularSolid solid, double edgeLength) {
 
 // Лилия: применение произвольной аффинной матрицы ко всем вершинам
 // Общая точка подключения: одна матрица участника 3 применяется ко всем вершинам;
-// индексы граней сохраняются, поэтому связи между вершинами не перестраиваются.
+// Связи между вершинами сохраняются. При инверсии ориентации меняем обход граней.
 void Polyhedron::applyMatrix(const Mat4& matrix) {
     for (Point& v : vertices_) {
         v = matrix.transformPoint(v);
+    }
+    if (matrix.determinant3x3() < 0.0) {
+        for (Polygon& face : faces_) {
+            std::reverse(face.vertexIndices.begin(), face.vertexIndices.end());
+        }
     }
 }
 
@@ -277,10 +388,5 @@ void Polyhedron::scaleAroundCenter(double sx, double sy, double sz) {
 // Лилия: отражение
 void Polyhedron::reflect(const Mat4& reflectionMatrix) {
     applyMatrix(reflectionMatrix);
-    if (reflectionMatrix.determinant3x3() < 0.0) {
-        for (Polygon& face : faces_) {
-            std::reverse(face.vertexIndices.begin(), face.vertexIndices.end());
-        }
-    }
 }
 } // namespace geometry

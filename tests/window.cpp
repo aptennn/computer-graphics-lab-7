@@ -277,6 +277,38 @@ int main(int argc, char** argv) {
         overlapDemo->setChecked(false);
         renderMode->setCurrentIndex(0);
 
+        auto* culling = child<QCheckBox>(window, "cullBackfaces");
+        auto* viewY = child<QDoubleSpinBox>(window, "viewDirY");
+        auto* azimuth = child<QDoubleSpinBox>(window, "orbitAzimuth");
+        projection->setCurrentIndex(0);
+        culling->setChecked(true);
+        child<QPushButton>(window, "buildRevolutionButton")->click();
+        const auto revolution = modelImage(*canvas);
+        viewY->setValue(1);
+        child<QPushButton>(window, "applyViewDirectionButton")->click();
+        require(modelImage(*canvas) != revolution, "Custom overview did not change the revolution view");
+        require(window.saveObjFile(temporary.filePath("revolution.obj")), "Could not save revolution");
+        require(window.loadObjFile(temporary.filePath("revolution.obj")), "Could not reload revolution");
+
+        invoke(window, "rebuildModel");
+        projection->setCurrentIndex(2);
+        require(azimuth->isEnabled() && !viewY->isEnabled(), "Orbit controls conflict with custom overview");
+        require(window.saveObjFile(temporary.filePath("before-orbit.obj")), "Could not save cube before orbit");
+        const auto orbitWireframe = modelImage(*canvas);
+        azimuth->setValue(70);
+        require(modelImage(*canvas) != orbitWireframe, "Culled wireframe ignored camera orbit");
+        renderMode->setCurrentIndex(1);
+        const auto orbitFilled = modelImage(*canvas);
+        azimuth->setValue(105);
+        require(modelImage(*canvas) != orbitFilled, "Z-buffer ignored camera orbit");
+        require(window.saveObjFile(temporary.filePath("after-orbit.obj")), "Could not save cube after orbit");
+        QFile beforeOrbit(temporary.filePath("before-orbit.obj"));
+        QFile afterOrbit(temporary.filePath("after-orbit.obj"));
+        require(beforeOrbit.open(QIODevice::ReadOnly) && afterOrbit.open(QIODevice::ReadOnly) &&
+                beforeOrbit.readAll() == afterOrbit.readAll(), "Orbit changed the model geometry");
+        culling->setChecked(false);
+        renderMode->setCurrentIndex(0);
+
         // Optional screenshots for visual inspection; normal CTest runs do not write them.
         const QString screenshots = qEnvironmentVariable("LAB6_SCREENSHOT_DIR");
         if (!screenshots.isEmpty()) {
@@ -301,7 +333,7 @@ int main(int argc, char** argv) {
             render(window).save(screenshots + "/line-controls.png");
         }
         std::cout << "30 model/projection/size combinations, projection switching, camera, "
-                     "three center axes, arbitrary-axis UI and rotation guides passed\n";
+                     "three center axes, rotation guides and orbit with culling and Z-buffer passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

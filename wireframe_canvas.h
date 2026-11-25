@@ -4,6 +4,7 @@
 
 #include "geometry.h"
 #include "projection.h"
+#include <optional>
 #include <vector>
 
 // Холст рисует модель только в своей области, отдельно от панели управления.
@@ -23,6 +24,8 @@ public:
     }
     void setRotationGuide(RotationGuide guide, int coordinateAxis, bool throughCenter,
                           const geometry::Point& a, const geometry::Point& b);
+    void setCullBackfaces(bool enabled) { cullBackfaces_ = enabled; update(); }
+    void setViewDirection(const geometry::Point& direction);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -45,4 +48,6 @@ private:
     bool orbitEnabled_ = false;
     double orbitAzimuthRad_ = 0.0;
     double orbitElevationRad_ = 0.0;
+    bool cullBackfaces_ = false;
+    std::optional<geometry::Mat4> axonometricView_;
 };

@@ -60,11 +60,23 @@ void WireframeCanvas::setOrbitCamera(bool enabled, double azimuthRad,
     update();
 }
 
+// Лилия: меняем направление параллельного обзора для всей сцены.
+void WireframeCanvas::setViewDirection(const geometry::Point& direction) {
+    const double length = std::hypot(direction.x, direction.y, direction.z);
+    if (!std::isfinite(length) || length <= 1e-12) return;
+    axonometricView_ = geometry::Projection::viewFromDirection(direction);
+    update();
+}
+
 geometry::ProjectionView WireframeCanvas::projectionView() const {
     const double distance = cameraDistanceInEdges_ * edgeLength_;
 
     if (!orbitEnabled_) {
-        return geometry::Projection::fixedView(projectionType_, distance);
+        auto frame = geometry::Projection::fixedView(projectionType_, distance);
+        if (projectionType_ == geometry::ProjectionType::Axonometric && axonometricView_) {
+            frame.view = *axonometricView_;
+        }
+        return frame;
     }
 
     const geometry::OrbitCamera camera(
@@ -95,12 +107,12 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
     }
 
     const auto view = projectionView();
-    const auto edges = geometry::Projection::projectEdges(model_, view);
+    const auto edges = geometry::Projection::projectEdges(model_, view, cullBackfaces_);
 
     std::vector<std::vector<geometry::ProjectedEdge>> additionalEdges;
     additionalEdges.reserve(additionalModels_.size());
     for (const auto& model : additionalModels_) {
-        additionalEdges.push_back(geometry::Projection::projectEdges(model, view));
+        additionalEdges.push_back(geometry::Projection::projectEdges(model, view, cullBackfaces_));
     }
 
     double extentX = 0.0;
@@ -164,7 +176,7 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
         for (std::size_t i = 0; i < additionalModels_.size(); ++i)
             objects.push_back({&additionalModels_[i], colors[i % 3]});
         const QImage frame = geometry::ZBufferRenderer::render(
-        objects, view, size(), viewport.center(), scale);
+            objects, view, size(), viewport.center(), scale, cullBackfaces_);
         painter.drawImage(0, 0, frame);
     } else {
         painter.setPen(QPen(Qt::black, 1.5));
@@ -235,7 +247,7 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
     painter.restore();
 
     painter.setPen(Qt::darkGray);
-    if (edges.empty() && additionalModels_.empty()) {
+    if (!cullBackfaces_ && edges.empty() && additionalModels_.empty()) {
         painter.drawText(viewport, Qt::AlignCenter,
                          "Модель за камерой. Увеличьте расстояние камеры.");
     }

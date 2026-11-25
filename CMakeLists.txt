@@ -45,7 +45,7 @@ if(BUILD_TESTING)
     add_executable(lab6_window_test
             tests/window.cpp mainwindow.cpp mainwindow.h
             wireframe_canvas.cpp wireframe_renderer.cpp
-            zbuffer_renderer.cpp
+            zbuffer_renderer.cpp camera.cpp
             geometry.cpp obj_io.cpp surface.cpp mat4.cpp projection.cpp)
     target_include_directories(lab6_window_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(lab6_window_test PRIVATE Qt6::Widgets)

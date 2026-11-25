@@ -124,16 +124,16 @@ void drawPolygon(const std::vector<Vertex>& vertices, QRgb color, QImage& image,
 
 } // namespace
 
-    QImage ZBufferRenderer::render(const std::vector<RasterObject>& objects,
+QImage ZBufferRenderer::render(const std::vector<RasterObject>& objects,
                                    ProjectionType type, double cameraDistance,
                                    QSize size, QPointF origin, double scale) {
     return render(objects, Projection::fixedView(type, cameraDistance),
                   size, origin, scale);
 }
 
-    QImage ZBufferRenderer::render(const std::vector<RasterObject>& objects,
+QImage ZBufferRenderer::render(const std::vector<RasterObject>& objects,
                                    const ProjectionView& frame,
-                                   QSize size, QPointF origin, double scale) {
+                                   QSize size, QPointF origin, double scale, bool cullBackfaces) {
     if (size.width() <= 0 || size.height() <= 0) return {};
 
     QImage image(size, QImage::Format_RGB32);
@@ -153,6 +153,11 @@ void drawPolygon(const std::vector<Vertex>& vertices, QRgb color, QImage& image,
         for (const Point& vertex : object.model->vertices())
             cameraVertices.push_back(view.transformPoint(vertex));
         for (const Polygon& face : object.model->faces()) {
+            if (cullBackfaces && !Projection::isFrontFacing(
+                    view.transformVector(faceNormal(*object.model, face)),
+                    cameraVertices[face.vertexIndices.front()], frame)) {
+                continue;
+            }
             std::vector<Point> polygon;
             polygon.reserve(face.vertexIndices.size());
             for (std::size_t index : face.vertexIndices) polygon.push_back(cameraVertices[index]);

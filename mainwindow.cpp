@@ -10,6 +10,8 @@
 #include <QGroupBox>
 #include <QGridLayout>
 #include <QLabel>
+#include <QLineEdit>
+#include <QStringList>
 #include <QPushButton>
 #include <QSaveFile>
 #include <QScrollArea>
@@ -95,6 +97,80 @@ MainWindow::MainWindow(QWidget* parent)
     auto* rebuildBtn = new QPushButton("Построить", solidGroup);
     solidForm->addRow(rebuildBtn);
     panelLayout->addWidget(solidGroup);
+    // Фигура вращения
+    auto* revGroup = new QGroupBox("Фигура вращения", panel);
+    auto* revLayout = new QVBoxLayout(revGroup);
+
+    revLayout->addWidget(new QLabel("Образующая (x,y,z; ...):", revGroup));
+    revolutionPoints_ = new QLineEdit(revGroup);
+    revolutionPoints_->setObjectName("revolutionPoints");
+    revolutionPoints_->setPlaceholderText("x,y,z; x,y,z; ...");
+    revolutionPoints_->setText("1,0,0; 1,0,1; 0,0,2");
+    revolutionPoints_->setToolTip("Точки через ';', координаты через ','.");
+    revLayout->addWidget(revolutionPoints_);
+
+    auto* revForm = new QFormLayout();
+    revolutionAxis_ = new QComboBox(revGroup);
+    revolutionAxis_->setObjectName("revolutionAxis");
+    revolutionAxis_->addItems({"X", "Y", "Z"});
+    revolutionAxis_->setCurrentIndex(2);
+    revForm->addRow("Ось вращения:", revolutionAxis_);
+
+    revolutionSegments_ = new QDoubleSpinBox(revGroup);
+    revolutionSegments_->setObjectName("revolutionSegments");
+    revolutionSegments_->setRange(3, 360);
+    revolutionSegments_->setDecimals(0);
+    revolutionSegments_->setValue(24);
+    revForm->addRow("Разбиений:", revolutionSegments_);
+    revLayout->addLayout(revForm);
+
+    auto* revBtn = new QPushButton("Построить фигуру вращения", revGroup);
+    revBtn->setObjectName("buildRevolutionButton");
+    revLayout->addWidget(revBtn);
+
+    revolutionStatus_ = new QLabel(revGroup);
+    revolutionStatus_->setObjectName("revolutionStatus");
+    revolutionStatus_->setWordWrap(true);
+    revolutionStatus_->setStyleSheet("color: #b3261e;");
+    revLayout->addWidget(revolutionStatus_);
+
+    panelLayout->addWidget(revGroup);
+
+    // Отсечение нелицевых граней — лабораторная №8
+    auto* cullGroup = new QGroupBox("Отсечение нелицевых граней", panel);
+    auto* cullLayout = new QVBoxLayout(cullGroup);
+
+    cullCheckBox_ = new QCheckBox("Включить отсечение", cullGroup);
+    cullCheckBox_->setObjectName("cullBackfaces");
+    cullLayout->addWidget(cullCheckBox_);
+
+    auto* viewForm = new QFormLayout();
+    viewDirX_ = new QDoubleSpinBox(cullGroup);
+    viewDirY_ = new QDoubleSpinBox(cullGroup);
+    viewDirZ_ = new QDoubleSpinBox(cullGroup);
+    for (auto* box : {viewDirX_, viewDirY_, viewDirZ_}) {
+        box->setRange(-10.0, 10.0);
+        box->setDecimals(2);
+        box->setSingleStep(0.1);
+    }
+    viewDirX_->setValue(0.0);
+    viewDirY_->setValue(0.0);
+    viewDirZ_->setValue(1.0);
+    viewDirX_->setObjectName("viewDirX");
+    viewDirY_->setObjectName("viewDirY");
+    viewDirZ_->setObjectName("viewDirZ");
+    viewForm->addRow("Обзор X:", viewDirX_);
+    viewForm->addRow("Обзор Y:", viewDirY_);
+    viewForm->addRow("Обзор Z:", viewDirZ_);
+    cullLayout->addLayout(viewForm);
+
+    applyViewDirBtn_ = new QPushButton("Применить вектор обзора", cullGroup);
+    applyViewDirBtn_->setObjectName("applyViewDirectionButton");
+    cullGroup->setToolTip("В аксонометрии направление задают поля X, Y и Z. "
+                          "В перспективе отсечение использует положение камеры.");
+    cullLayout->addWidget(applyViewDirBtn_);
+
+    panelLayout->addWidget(cullGroup);
 
     auto* objGroup = new QGroupBox("Егор — лабораторная №7: загрузка OBJ", panel);
     auto* objLayout = new QVBoxLayout(objGroup);
@@ -197,6 +273,7 @@ MainWindow::MainWindow(QWidget* parent)
                                 "Если модель за камерой, увеличьте расстояние.");
     projectionForm->addRow("Камера (в рёбрах):", cameraDistance_);
     auto* orbitAzimuth = new QDoubleSpinBox(projectionGroup);
+    orbitAzimuth->setObjectName("orbitAzimuth");
     orbitAzimuth->setRange(0.0, 360.0);
     orbitAzimuth->setDecimals(0);
     orbitAzimuth->setSingleStep(5.0);
@@ -411,6 +488,10 @@ MainWindow::MainWindow(QWidget* parent)
         cameraDistance_->setEnabled(perspective);
         orbitAzimuth->setEnabled(orbit);
         orbitElevation->setEnabled(orbit);
+        for (auto* box : {viewDirX_, viewDirY_, viewDirZ_}) {
+            box->setEnabled(!perspective);
+        }
+        applyViewDirBtn_->setEnabled(!perspective);
 
         canvas_->setProjectionType(perspective
             ? geometry::ProjectionType::Perspective
@@ -446,6 +527,11 @@ MainWindow::MainWindow(QWidget* parent)
     connect(scaleBtn,   &QPushButton::clicked, this, &MainWindow::applyScale);
     connect(scaleCenterBtn, &QPushButton::clicked, this, &MainWindow::applyScaleAroundCenter);
     connect(reflBtn,    &QPushButton::clicked, this, &MainWindow::applyReflect);
+    connect(revBtn, &QPushButton::clicked, this, &MainWindow::buildRevolution);
+    connect(cullCheckBox_, &QCheckBox::toggled, this, [this](bool enabled) {
+        canvas_->setCullBackfaces(enabled);
+    });
+    connect(applyViewDirBtn_, &QPushButton::clicked, this, &MainWindow::applyViewDirection);
     connect(resetBtn,   &QPushButton::clicked, this, &MainWindow::resetModel);
 
     updateRotationGuide();
@@ -621,4 +707,51 @@ void MainWindow::updateOverlapDemo() {
     extras.push_back(std::move(cube));
     extras.push_back(std::move(octahedron));
     canvas_->setAdditionalModels(std::move(extras));
+}
+
+void MainWindow::buildRevolution() {
+    revolutionStatus_->clear();
+
+    std::vector<geometry::Point> generatrix;
+    const QStringList chunks = revolutionPoints_->text().split(';', Qt::SkipEmptyParts);
+    for (const QString& chunk : chunks) {
+        const QStringList parts = chunk.split(',', Qt::SkipEmptyParts);
+        if (parts.size() != 3) {
+            revolutionStatus_->setText("Точка должна содержать ровно 3 координаты.");
+            return;
+        }
+        bool okX = false, okY = false, okZ = false;
+        const double x = parts[0].trimmed().toDouble(&okX);
+        const double y = parts[1].trimmed().toDouble(&okY);
+        const double z = parts[2].trimmed().toDouble(&okZ);
+        if (!okX || !okY || !okZ) {
+            revolutionStatus_->setText("Не удалось разобрать координаты точки.");
+            return;
+        }
+        generatrix.push_back({x, y, z});
+    }
+    if (generatrix.size() < 2) {
+        revolutionStatus_->setText("Нужно минимум 2 точки образующей.");
+        return;
+    }
+
+    const char axis = (revolutionAxis_->currentIndex() == 0) ? 'x'
+                    : (revolutionAxis_->currentIndex() == 1) ? 'y' : 'z';
+    const int segments = static_cast<int>(revolutionSegments_->value());
+
+    try {
+        importedModel_.reset();
+        model_ = geometry::makeSolidOfRevolution(generatrix, axis, segments);
+        canvas_->setAutoFit(true);
+        updateOverlapDemo();
+        objStatus_->setText(QString("Построена фигура вращения (%1 вершин, %2 граней)")
+                                .arg(model_.vertices().size()).arg(model_.faces().size()));
+        canvas_->update();
+    } catch (const std::exception& error) {
+        revolutionStatus_->setText(QString("Ошибка: %1").arg(QString::fromUtf8(error.what())));
+    }
+}
+
+void MainWindow::applyViewDirection() {
+    canvas_->setViewDirection({viewDirX_->value(), viewDirY_->value(), viewDirZ_->value()});
 }

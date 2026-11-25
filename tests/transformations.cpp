@@ -156,6 +156,28 @@ void testProjections() {
     require(Projection::projectEdges(behind, ProjectionType::Perspective, 10).empty(),
             "Edges behind camera were drawn");
 }
+
+void testBackfaceCulling() {
+    auto parallel = Projection::fixedView(ProjectionType::Axonometric, 5);
+    parallel.view = Projection::viewFromDirection({0, 0, 1});
+    const auto cube = geometry::makeRegularSolid(RegularSolid::Hexahedron);
+    require(Projection::projectEdges(cube, parallel, true).size() == 4,
+            "Looking straight down should show only one face of the cube");
+
+    const auto perspective = Projection::fixedView(ProjectionType::Perspective, 5);
+    require(Projection::isFrontFacing({1, 0, 0}, {-1, 0, 0}, perspective) &&
+            !Projection::isFrontFacing({1, 0, 0}, {1, 0, 0}, perspective),
+            "Perspective culling must account for the face position");
+
+    const auto solid = geometry::makeSolidOfRevolution(
+        {{1, 0, 0}, {1, 0, 1}, {0, 0, 2}}, 'z', 12);
+    require(solid.faces().size() == 36, "Revolution pole produced degenerate triangles");
+    for (const auto& face : solid.faces()) {
+        const Point p = solid.vertices()[face.vertexIndices.front()];
+        const Point n = geometry::faceNormal(solid, face);
+        require(p.x * n.x + p.y * n.y > 0, "Revolution face points inward");
+    }
+}
 } // namespace
 
 int main() {
@@ -163,6 +185,7 @@ int main() {
         testCenterRotation();
         testLineRotation();
         testProjections();
+        testBackfaceCulling();
         std::cout << "Center rotation, arbitrary line, invariants and projections passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
