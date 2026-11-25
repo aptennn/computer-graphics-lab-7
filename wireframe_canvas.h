@@ -13,6 +13,7 @@ public:
     explicit WireframeCanvas(const geometry::Polyhedron& model,
                              const double& edgeLength, QWidget* parent = nullptr);
     void setProjectionType(geometry::ProjectionType type);
+    void setOrbitCamera(bool enabled, double azimuthRad, double elevationRad);
     void setCameraDistance(double distanceInEdges);
     void setAutoFit(bool enabled) { autoFit_ = enabled; update(); }
     // Егор, лабораторная №8: общий буфер глубины для основной и дополнительных моделей.
@@ -39,4 +40,9 @@ private:
     bool throughCenter_ = false;
     geometry::Point lineA_;
     geometry::Point lineB_{1, 1, 1};
+    geometry::ProjectionView projectionView() const;
+
+    bool orbitEnabled_ = false;
+    double orbitAzimuthRad_ = 0.0;
+    double orbitElevationRad_ = 0.0;
 };

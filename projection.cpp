@@ -69,28 +69,42 @@ Mat4 Projection::perspectiveMatrix(double cameraDistance) {
     result.m[3][2] = -1.0 / cameraDistance;
     return result;
 }
+ProjectionView Projection::fixedView(ProjectionType type, double cameraDistance) {
+    const Mat4 projection = type == ProjectionType::Perspective
+        ? perspectiveMatrix(cameraDistance)
+        : axonometricMatrix();
+    return {type, cameraDistance, viewMatrix(), projection};
+}
 
 // Участник 3. Полный путь одного отрезка: мировые точки -> вид -> отсечение -> проекция.
 // Используется для оси вращения и меток A/B/C/O: ракурс совпадает с ракурсом модели.
 // Проекция точки тоже возможна: передаём одинаковые концы A=A.
-std::optional<ProjectedEdge> Projection::projectSegment(const Point& a, const Point& b,
-                                                        ProjectionType type, double cameraDistance) {
-    const Mat4 view = viewMatrix();
-    const Mat4 projection = type == ProjectionType::Perspective
-        ? perspectiveMatrix(cameraDistance) : axonometricMatrix();
-    return projectCameraSegment(view.transformPoint(a), view.transformPoint(b),
-                                type, cameraDistance, projection);
+std::optional<ProjectedEdge> Projection::projectSegment(
+        const Point& a, const Point& b, ProjectionType type, double cameraDistance) {
+    return projectSegment(a, b, fixedView(type, cameraDistance));
+}
+
+std::optional<ProjectedEdge> Projection::projectSegment(
+        const Point& a, const Point& b, const ProjectionView& frame) {
+    return projectCameraSegment(
+        frame.view.transformPoint(a), frame.view.transformPoint(b),
+        frame.type, frame.cameraDistance, frame.projection);
 }
 
 // Участник 3. Подготовка каркаса целиком; координаты исходной модели не меняются.
 // Лекция 9, слайды 57–58: мировые координаты -> камера -> проекция -> экран.
 // Здесь возвращаем проекционные координаты; переход к пикселям выполняется позже.
-std::vector<ProjectedEdge> Projection::projectEdges(const Polyhedron& model,
-                                                   ProjectionType type,
-                                                   double cameraDistance) {
-    const Mat4 view = viewMatrix();
-    const bool perspective = type == ProjectionType::Perspective;
-    const Mat4 projection = perspective ? perspectiveMatrix(cameraDistance) : axonometricMatrix();
+std::vector<ProjectedEdge> Projection::projectEdges(
+        const Polyhedron& model, ProjectionType type, double cameraDistance) {
+    return projectEdges(model, fixedView(type, cameraDistance));
+}
+
+std::vector<ProjectedEdge> Projection::projectEdges(
+        const Polyhedron& model, const ProjectionView& frame) {
+    const Mat4& view = frame.view;
+    const Mat4& projection = frame.projection;
+    const ProjectionType type = frame.type;
+    const double cameraDistance = frame.cameraDistance;
     // Переводим каждую общую вершину в систему камеры один раз для всех её рёбер.
     // reserve выделяет память; сами элементы добавляются через push_back.
     std::vector<Point> cameraVertices;

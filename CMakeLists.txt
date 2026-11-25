@@ -24,7 +24,9 @@ add_executable(computer_graphics6
         zbuffer_renderer.cpp zbuffer_renderer.h
         mat4.cpp mat4.h
         projection.cpp projection.h
-        mainwindow.cpp mainwindow.h)
+        mainwindow.cpp mainwindow.h
+        camera.h
+        camera.cpp)
 target_link_libraries(computer_graphics6
         Qt::Core
         Qt::Gui

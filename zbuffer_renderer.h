@@ -21,6 +21,10 @@ public:
     // Все объекты рисуются в одном буфере глубины; порядок объектов не важен.
     static QImage render(const std::vector<RasterObject>& objects, ProjectionType type,
                          double cameraDistance, QSize size, QPointF origin, double scale);
+
+    static QImage render(const std::vector<RasterObject>& objects,
+                     const ProjectionView& frame,
+                     QSize size, QPointF origin, double scale);
 };
 
 } // namespace geometry

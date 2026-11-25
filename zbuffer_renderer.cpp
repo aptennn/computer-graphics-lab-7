@@ -124,17 +124,28 @@ void drawPolygon(const std::vector<Vertex>& vertices, QRgb color, QImage& image,
 
 } // namespace
 
-QImage ZBufferRenderer::render(const std::vector<RasterObject>& objects, ProjectionType type,
-                               double cameraDistance, QSize size, QPointF origin, double scale) {
+    QImage ZBufferRenderer::render(const std::vector<RasterObject>& objects,
+                                   ProjectionType type, double cameraDistance,
+                                   QSize size, QPointF origin, double scale) {
+    return render(objects, Projection::fixedView(type, cameraDistance),
+                  size, origin, scale);
+}
+
+    QImage ZBufferRenderer::render(const std::vector<RasterObject>& objects,
+                                   const ProjectionView& frame,
+                                   QSize size, QPointF origin, double scale) {
     if (size.width() <= 0 || size.height() <= 0) return {};
+
     QImage image(size, QImage::Format_RGB32);
     image.fill(Qt::white);
-    std::vector<double> zbuffer(static_cast<std::size_t>(size.width()) * size.height(),
-                                std::numeric_limits<double>::infinity());
-    const Mat4 view = Projection::viewMatrix();
-    const bool perspective = type == ProjectionType::Perspective;
-    const Mat4 projection = perspective ? Projection::perspectiveMatrix(cameraDistance)
-                                        : Projection::axonometricMatrix();
+    std::vector<double> zbuffer(
+        static_cast<std::size_t>(size.width()) * size.height(),
+        std::numeric_limits<double>::infinity());
+
+    const Mat4& view = frame.view;
+    const Mat4& projection = frame.projection;
+    const bool perspective = frame.type == ProjectionType::Perspective;
+    const double cameraDistance = frame.cameraDistance;
     for (const RasterObject& object : objects) {
         if (!object.model) continue;
         std::vector<Point> cameraVertices;

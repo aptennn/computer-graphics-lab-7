@@ -1,5 +1,5 @@
 #include "wireframe_canvas.h"
-
+#include "camera.h"
 #include <QPainter>
 
 #include <algorithm>
@@ -52,6 +52,32 @@ void WireframeCanvas::setRotationGuide(RotationGuide guide, int coordinateAxis, 
     update();
 }
 
+void WireframeCanvas::setOrbitCamera(bool enabled, double azimuthRad,
+                                     double elevationRad) {
+    orbitEnabled_ = enabled;
+    orbitAzimuthRad_ = azimuthRad;
+    orbitElevationRad_ = elevationRad;
+    update();
+}
+
+geometry::ProjectionView WireframeCanvas::projectionView() const {
+    const double distance = cameraDistanceInEdges_ * edgeLength_;
+
+    if (!orbitEnabled_) {
+        return geometry::Projection::fixedView(projectionType_, distance);
+    }
+
+    const geometry::OrbitCamera camera(
+        model_.center(), distance, orbitAzimuthRad_, orbitElevationRad_);
+
+    return {
+        geometry::ProjectionType::Perspective,
+        distance,
+        camera.viewMatrix(),
+        camera.projectionMatrix()
+    };
+}
+
 // Участник 3, связь с отрисовкой: вызывается Qt после update() или изменения окна.
 // Порядок: спроецировать рёбра и ось -> подобрать масштаб вида -> нарисовать.
 // Масштаб вида лишь размещает изображение в окне; это не Mat4::scale модели.
@@ -68,13 +94,15 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
         return;
     }
 
-    const auto edges = geometry::Projection::projectEdges(
-        model_, projectionType_, cameraDistanceInEdges_ * edgeLength_);
+    const auto view = projectionView();
+    const auto edges = geometry::Projection::projectEdges(model_, view);
+
     std::vector<std::vector<geometry::ProjectedEdge>> additionalEdges;
     additionalEdges.reserve(additionalModels_.size());
-    for (const auto& model : additionalModels_)
-        additionalEdges.push_back(geometry::Projection::projectEdges(
-            model, projectionType_, cameraDistanceInEdges_ * edgeLength_));
+    for (const auto& model : additionalModels_) {
+        additionalEdges.push_back(geometry::Projection::projectEdges(model, view));
+    }
+
     double extentX = 0.0;
     double extentY = 0.0;
     for (const auto& edge : edges) {
@@ -101,16 +129,15 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
         else if (coordinateAxis_ == 1) b.y += edgeLength_;
         else b.z += edgeLength_;
     }
-    const double cameraDistance = cameraDistanceInEdges_ * edgeLength_;
     const bool validGuide = rotationGuide_ != RotationGuide::Hidden &&
         std::hypot(b.x - a.x, b.y - a.y, b.z - a.z) > 1e-12;
     // Ось проходит те же матрицы вида/проекции и отсечение, что и рёбра модели.
-    const auto guide = validGuide ? geometry::Projection::projectSegment(a, b, projectionType_, cameraDistance)
-                                 : std::nullopt;
-    const auto pointA = validGuide ? geometry::Projection::projectSegment(a, a, projectionType_, cameraDistance)
-                                  : std::nullopt;
+    const auto guide = validGuide
+        ? geometry::Projection::projectSegment(a, b, view) : std::nullopt;
+    const auto pointA = validGuide
+        ? geometry::Projection::projectSegment(a, a, view) : std::nullopt;
     const auto pointB = validGuide && !coordinateGuide
-        ? geometry::Projection::projectSegment(b, b, projectionType_, cameraDistance) : std::nullopt;
+        ? geometry::Projection::projectSegment(b, b, view) : std::nullopt;
     // Точки AB тоже должны помещаться на холсте; длина пунктирной прямой масштаб не меняет.
     for (const auto& point : {pointA, pointB}) {
         if (point) {
@@ -137,7 +164,7 @@ void WireframeCanvas::paintEvent(QPaintEvent*) {
         for (std::size_t i = 0; i < additionalModels_.size(); ++i)
             objects.push_back({&additionalModels_[i], colors[i % 3]});
         const QImage frame = geometry::ZBufferRenderer::render(
-            objects, projectionType_, cameraDistance, size(), viewport.center(), scale);
+        objects, view, size(), viewport.center(), scale);
         painter.drawImage(0, 0, frame);
     } else {
         painter.setPen(QPen(Qt::black, 1.5));

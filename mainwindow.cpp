@@ -179,7 +179,11 @@ MainWindow::MainWindow(QWidget* parent)
     auto* projectionForm = new QFormLayout(projectionGroup);
     projectionBox_ = new QComboBox(projectionGroup);
     projectionBox_->setObjectName("projectionBox");
-    projectionBox_->addItems({"Аксонометрическая", "Перспективная"});
+    projectionBox_->addItems({
+    "Аксонометрическая",
+    "Перспективная",
+    "Перспективная — облёт"
+    });
     projectionForm->addRow("Тип:", projectionBox_);
     cameraDistance_ = new QDoubleSpinBox(projectionGroup);
     cameraDistance_->setObjectName("cameraDistance");
@@ -192,6 +196,21 @@ MainWindow::MainWindow(QWidget* parent)
                                 "в системе камеры, в единицах длины ребра. "
                                 "Если модель за камерой, увеличьте расстояние.");
     projectionForm->addRow("Камера (в рёбрах):", cameraDistance_);
+    auto* orbitAzimuth = new QDoubleSpinBox(projectionGroup);
+    orbitAzimuth->setRange(0.0, 360.0);
+    orbitAzimuth->setDecimals(0);
+    orbitAzimuth->setSingleStep(5.0);
+    orbitAzimuth->setValue(35.0);
+    orbitAzimuth->setSuffix("°");
+    projectionForm->addRow("Азимут камеры:", orbitAzimuth);
+
+    auto* orbitElevation = new QDoubleSpinBox(projectionGroup);
+    orbitElevation->setRange(-85.0, 85.0);
+    orbitElevation->setDecimals(0);
+    orbitElevation->setSingleStep(5.0);
+    orbitElevation->setValue(25.0);
+    orbitElevation->setSuffix("°");
+    projectionForm->addRow("Возвышение камеры:", orbitElevation);
     rotationGuideBox_ = new QComboBox(projectionGroup);
     rotationGuideBox_->setObjectName("rotationGuideBox");
     rotationGuideBox_->addItems({"Скрыть ось", "Выбранная ось X/Y/Z", "Прямая AB"});
@@ -384,12 +403,30 @@ MainWindow::MainWindow(QWidget* parent)
     connect(rotBtn,     &QPushButton::clicked, this, &MainWindow::applyRotate);
     connect(lineBtn, &QPushButton::clicked, this, &MainWindow::applyRotateAroundLine);
     // Переключение проекции меняет только способ отображения, вершины не трогаем.
-    connect(projectionBox_, &QComboBox::currentIndexChanged, this, [this](int index) {
-        const bool perspective = index == 1;
+    const auto updateCameraControls = [this, orbitAzimuth, orbitElevation] {
+        const int index = projectionBox_->currentIndex();
+        const bool orbit = index == 2;
+        const bool perspective = index == 1 || orbit;
+
         cameraDistance_->setEnabled(perspective);
-        canvas_->setProjectionType(perspective ? geometry::ProjectionType::Perspective
-                                               : geometry::ProjectionType::Axonometric);
-    });
+        orbitAzimuth->setEnabled(orbit);
+        orbitElevation->setEnabled(orbit);
+
+        canvas_->setProjectionType(perspective
+            ? geometry::ProjectionType::Perspective
+            : geometry::ProjectionType::Axonometric);
+
+        canvas_->setOrbitCamera(
+            orbit,
+            orbitAzimuth->value() * kPi / 180.0,
+            orbitElevation->value() * kPi / 180.0);
+    };
+
+    connect(projectionBox_, &QComboBox::currentIndexChanged, this, updateCameraControls);
+    connect(orbitAzimuth, &QDoubleSpinBox::valueChanged, this, updateCameraControls);
+    connect(orbitElevation, &QDoubleSpinBox::valueChanged, this, updateCameraControls);
+
+    updateCameraControls();
     // Значение камеры передаётся в единицах длины ребра; в холсте оно станет c.
     connect(cameraDistance_, &QDoubleSpinBox::valueChanged, this, [this](double distance) {
         canvas_->setCameraDistance(distance);

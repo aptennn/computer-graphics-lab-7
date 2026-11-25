@@ -7,6 +7,14 @@ namespace geometry {
 
 enum class ProjectionType { Axonometric, Perspective };
 
+// Общие параметры одного кадра для каркаса, осей и Z-буфера.
+struct ProjectionView {
+    ProjectionType type;
+    double cameraDistance;
+    Mat4 view;
+    Mat4 projection;
+};
+
 // Результат проецирования одного ребра: используются x/y, а z равна 0.
 // Это ещё не пиксели: масштаб и положение на холсте задаются при отрисовке.
 struct ProjectedEdge {
@@ -22,6 +30,15 @@ public:
     static Mat4 axonometricMatrix();
     // Центр проекции (0,0,c), плоскость z=0; w=1-z/c (слайд 54).
     static Mat4 perspectiveMatrix(double cameraDistance);
+    
+    static ProjectionView fixedView(ProjectionType type, double cameraDistance);
+
+    static std::optional<ProjectedEdge> projectSegment(
+        const Point& a, const Point& b, const ProjectionView& frame);
+
+    static std::vector<ProjectedEdge> projectEdges(
+        const Polyhedron& model, const ProjectionView& frame);
+
     // Отрезок и вспомогательная ось проходят те же преобразования, что и модель.
     static std::optional<ProjectedEdge> projectSegment(const Point& a, const Point& b,
                                                        ProjectionType type, double cameraDistance);
